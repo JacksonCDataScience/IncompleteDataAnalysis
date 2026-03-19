@@ -4,19 +4,23 @@ output: html_document
 date: "2026-03-19"
 ---
 
-**(1)**
+**(1) Simulating Missingness**
 ```{r}
 library(MASS)
+library(dplyr)
+library(ggplot2)
 data(birthwt)
 ```
 
 ```{r}
+# make sure data is complete
 any(is.na(birthwt$age))
 any(is.na(birthwt$bwt))
 ```
 
 
 ```{r}
+# set up complete dataset (age vs. birth weight)
 x <- birthwt$age
 y <- birthwt$bwt
 
@@ -24,14 +28,14 @@ data_complete <- data.frame(x = x, y = y)
 ```
 
 ```{r}
-y_scaled <- scale(y)
+# simulate missingess
+set.seed(1)
 
-p_miss <- plogis(0.5 * y_scaled)
+y_scaled <- scale(y) # scale for stability
+p_miss <- plogis(0.5 * y_scaled) # logistic model for missingness prob
+R <- rbinom(length(x), 1, p_miss) # generate missingness (1 -> missing)
 
-R <- rbinom(length(x), 1, p_miss)
-```
-
-```{r}
+# substitute the missing values into the dataset
 x_obs <- x
 x_obs[R == 1] <- NA
 
@@ -39,73 +43,130 @@ data_obs <- data.frame(x = x_obs, y = y)
 ```
 
 ```{r}
+# about 50% of the data should be missing
 mean(is.na(data_obs$x))
 ```
-**(2)**
+
+**(2) $x$ on $y$ Regression**
 ```{r}
+# fit x on y regression for both the original and the missing data datasets
 fit_full_xy <- lm(x ~ y, data = data_complete)
 fit_missing_xy <- lm(x ~ y, data = data_obs)
 
+# summary outputs
 summary(fit_full_xy)
 summary(fit_missing_xy)
 ```
 
 ```{r}
+data_complete %>% ggplot(aes(x = y, y = x)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE) +
+  labs(title = "Complete Data (x = 21.3 + 0.00066y)", x = "Birth Weight (g)", y = "Maternal Age") + 
+  theme_bw()
+
+data_obs %>% ggplot(aes(x = x, y = y)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE) + 
+  labs(title = "Missing Data (x = 24.4 - 0.0007y)", x = "Birth Weight (g)", y = "Maternal Age") + 
+  theme_bw()
+```
+
+```{r}
+# residual plots, nothing too alarming
 par(mfrow = c(2,2))
 plot(fit_missing_xy)
 plot(fit_full_xy)
 par(mfrow = c(1,1))
 ```
 
-**(3)**
+**(3) $y$ on $x$ Regression**
 ```{r}
+# fit y on x regression for both the original and the missing data datasets
 fit_full_yx <- lm(y ~ x, data = data_complete)
 fit_missing_yx <- lm(y ~ x, data = data_obs)
 
+# summary outputs
 summary(fit_full_yx)
 summary(fit_missing_yx)
 ```
 
 ```{r}
+data_complete %>% ggplot(aes(x = x, y = y)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE) +
+  labs(title = "Complete Data (y = 2656 + 12.43x)", x = "Maternal Age", y = "Birth Weight (g)") + 
+  theme_bw()
+
+data_obs %>% ggplot(aes(x = x, y = y)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE) + 
+  labs(title = "Missing Data (y = 3084 - 15.48x)", x = "Maternal Age", y = "Birth Weight (g)") + 
+  theme_bw()
+```
+
+```{r}
+# residual plots, nothing too alarming
 par(mfrow = c(2,2))
 plot(fit_missing_yx)
 plot(fit_full_yx)
 par(mfrow = c(1,1))
 ```
 
-**(4)**
+**(4) Stochastic Regression Imputation**
 ```{r}
+# fit x on y on missing data dataset
 fit_imp_xy <- lm(x ~ y, data = data_obs)
 ```
 
 ```{r}
+# predicted values
 x_pred <- predict(fit_imp_xy, newdata = data_obs)
 
+# residual st. dev.
 sigma <- summary(fit_imp_xy)$sigma
 
+# find indices of missing observations
 x_imp <- data_obs$x
 missings <- is.na(x_imp)
 
+# replace NAs with predicted + random noise
 x_imp[missings] <- x_pred[missings] + rnorm(sum(missings), 0, sigma)
 
-data_imp <- data.frame(x = x_imp, y = y)
+data_imp <- data.frame(x = x_imp, y = y, missing = as.factor(missings*1))
 ```
 
 ```{r}
+# fit y on x using data with imputed values
 fit_imp_yx <- lm(y ~ x, data = data_imp) 
 summary(fit_imp_yx)
 ```
 
-**(5)**
 ```{r}
+data_imp %>% ggplot(aes(x = x, y = y)) + 
+  geom_point(aes(color = missing)) + 
+  geom_smooth(method = 'lm', se = FALSE, color = 'purple') + 
+  labs(title = "Stochastic Regression Imputation (y = 3226 - 12.65x)",
+       x = "Maternal Age", y = "Birth Weight (g)" ) + 
+  scale_color_discrete(name = "Missing") + 
+  theme_bw()
+```
+
+**(5) Simulation**
+```{r}
+# 100 simulations
 n_sim <- 100
 
+# initialize list of results (int, slope, var, corr)
 results <- data.frame(
+  
+  # complete-case
   intercept_cc = numeric(n_sim),
   slope_cc = numeric(n_sim),
   var_cc = numeric(n_sim),
   cor_cc = numeric(n_sim),
   
+  # imputed
   intercept_imp = numeric(n_sim),
   slope_imp = numeric(n_sim),
   var_imp = numeric(n_sim),
@@ -114,34 +175,50 @@ results <- data.frame(
 ```
 
 ```{r}
+# run the simulations
 for (i in 1:n_sim) {
+  
+  # --- Complete-Case ---
+  
+  # generate missingness
   p_miss <- plogis(0.5 * scale(y))
   R <- rbinom(length(x), 1, p_miss)
   
+  # substitute in missing values
   x_obs <- x
   x_obs[R == 1] <- NA
   data_obs <- data.frame(x = x_obs, y = y)
   
+  # complete-case regression
   fit_cc <- lm(y ~ x, data = data_obs)
   
+  # store results
   results$intercept_cc[i] <- coef(fit_cc)[1]
   results$slope_cc[i] <- coef(fit_cc)[2]
   results$var_cc[i] <- summary(fit_cc)$sigma^2
   results$cor_cc[i] <- cor(data_obs$x, data_obs$y, use = "complete.obs")
   
+  
+  # --- Stochastic Regression Imputation ---
+  
+  # fit x on y
   fit_imp_xy <- lm(x ~ y, data = data_obs)
   
+  # predicted values + residual st. dev.
   x_pred <- predict(fit_imp_xy, newdata = data_obs)
   sigma <- summary(fit_imp_xy)$sigma
   
+  # replace NAs with predicted + random noise
   x_imp <- x_obs
   missings <- is.na(x_imp)
   x_imp[missings] <- x_pred[missings] + rnorm(sum(missings), 0, sigma)
   
   data_imp <- data.frame(x = x_imp, y = y)
   
+  # fit y on x using data with imputed values
   fit_imp_yx <- lm(y ~ x, data = data_imp)
   
+  # store results
   results$intercept_imp[i] <- coef(fit_imp_yx)[1]
   results$slope_imp[i] <- coef(fit_imp_yx)[2]
   results$var_imp[i] <- summary(fit_imp_yx)$sigma^2
@@ -150,6 +227,7 @@ for (i in 1:n_sim) {
 ```
 
 ```{r}
+# summary statistics of complete dataset for comparison
 complete_model <- lm(y ~ x, data = data_complete)
 
 complete_intercept <- coef(complete_model)[1]
@@ -159,11 +237,20 @@ complete_cor <- cor(x, y)
 ```
 
 ```{r}
-hist(results$slope_cc, main="Slope (Complete Case)")
-abline(v = complete_slope, col="red", lwd=2)
+# histograms
+results %>% ggplot(aes(x = slope_cc)) +
+  geom_histogram(binwidth = 5, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_slope, color = 'red', linewidth = 1) + 
+  labs(title = "Complete-Case Analysis", x = "Age Coefficient",
+       y = NULL) + 
+  theme_bw()
 
-hist(results$slope_imp, main="Slope (Imputed)")
-abline(v = complete_slope, col="blue", lwd=2)
+results %>% ggplot(aes(x = slope_imp)) +
+  geom_histogram(binwidth = 5, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_slope, color = 'red', linewidth = 1) + 
+  labs(title = "Stochastic Regression Imputation", x = "Age Coefficient",
+       y = NULL) + 
+  theme_bw()
 ```
 
 
