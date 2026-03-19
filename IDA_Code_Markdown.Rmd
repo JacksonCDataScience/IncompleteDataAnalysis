@@ -1,0 +1,764 @@
+---
+title: |
+  <center> Incomplete Data Analysis Assignment Code Markdown </center>
+author: "Jackson Cramer, Maximillian McCourt, Brandon Causing"
+subtitle: School of Mathematics, University of Edinburgh
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+
+Group Member Contributions:<br>
+- Brandon Causing - s2901457: Coding and write up of Task 1. (roughtly 1/3 of total work)<br>
+- Maximillian McCourt - s2145762: Coding and report write up of Task 2, questions 1-3, as well as editing of the remaining writeup of Task 2. (roughly 1/3 of total work)<br>
+- Jackson Cramer - s2274544: Coding and report write up of Task 2, questions 4-5, as well as editing of the remaining writeup of Task 2. (roughly 1/3 of total work)<br>
+
+
+
+```{r}
+library(VIM)
+library(naniar)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(corrplot)
+library(mice)
+library(MASS)
+
+```
+
+
+# Task 1. Comparison of complete case analysis, stochastic regression imputation and predictive mean matching
+
+## 1.
+
+```{r}
+data(birthwt)
+```
+
+```{r}
+# make sure data is complete
+any(is.na(birthwt$age))
+any(is.na(birthwt$bwt))
+```
+
+
+```{r}
+# set up complete dataset (age vs. birth weight)
+x <- birthwt$age
+y <- birthwt$bwt
+
+data_complete <- data.frame(x = x, y = y)
+```
+
+```{r}
+# simulate missingess
+set.seed(1)
+
+y_scaled <- scale(y) # scale for stability
+p_miss <- plogis(0.5 * y_scaled) # logistic model for missingness prob
+R <- rbinom(length(x), 1, p_miss) # generate missingness (1 -> missing)
+
+# substitute the missing values into the dataset
+x_obs <- x
+x_obs[R == 1] <- NA
+
+data_obs <- data.frame(x = x_obs, y = y)
+```
+
+```{r}
+# about 50% of the data should be missing
+mean(is.na(data_obs$x))
+```
+
+## 2.
+
+```{r}
+# fit x on y regression for both the original and the missing data datasets
+fit_full_xy <- lm(x ~ y, data = data_complete)
+fit_missing_xy <- lm(x ~ y, data = data_obs)
+
+# summary outputs
+summary(fit_full_xy)
+summary(fit_missing_xy)
+```
+
+```{r}
+data_complete %>% ggplot(aes(x = y, y = x)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE) +
+  labs(title = "Complete Data (x = 21.3 + 0.00066y)", x = "Birth Weight (g)", y = "Maternal Age") + 
+  theme_bw()
+
+data_obs %>% ggplot(aes(x = x, y = y)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE) + 
+  labs(title = "Missing Data (x = 24.4 - 0.0007y)", x = "Birth Weight (g)", y = "Maternal Age") + 
+  theme_bw()
+```
+
+```{r}
+# residual plots, nothing too alarming
+par(mfrow = c(2,2))
+plot(fit_missing_xy)
+plot(fit_full_xy)
+par(mfrow = c(1,1))
+```
+
+## 3.
+
+```{r}
+# fit y on x regression for both the original and the missing data datasets
+fit_full_yx <- lm(y ~ x, data = data_complete)
+fit_missing_yx <- lm(y ~ x, data = data_obs)
+
+# summary outputs
+summary(fit_full_yx)
+summary(fit_missing_yx)
+```
+
+```{r}
+data_complete %>% ggplot(aes(x = x, y = y)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE) +
+  labs(title = "Complete Data (y = 2656 + 12.43x)", x = "Maternal Age", y = "Birth Weight (g)") + 
+  theme_bw()
+
+data_obs %>% ggplot(aes(x = x, y = y)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE) + 
+  labs(title = "Missing Data (y = 3084 - 15.48x)", x = "Maternal Age", y = "Birth Weight (g)") + 
+  theme_bw()
+```
+
+```{r}
+# residual plots, nothing too alarming
+par(mfrow = c(2,2))
+plot(fit_missing_yx)
+plot(fit_full_yx)
+par(mfrow = c(1,1))
+```
+
+## 4.
+
+```{r}
+# fit x on y on missing data dataset
+fit_imp_xy <- lm(x ~ y, data = data_obs)
+```
+
+```{r}
+# predicted values
+x_pred <- predict(fit_imp_xy, newdata = data_obs)
+
+# residual st. dev.
+sigma <- summary(fit_imp_xy)$sigma
+
+# find indices of missing observations
+x_imp <- data_obs$x
+missings <- is.na(x_imp)
+
+# replace NAs with predicted + random noise
+x_imp[missings] <- x_pred[missings] + rnorm(sum(missings), 0, sigma)
+
+data_imp <- data.frame(x = x_imp, y = y, missing = as.factor(missings*1))
+```
+
+```{r}
+# fit y on x using data with imputed values
+fit_imp_yx <- lm(y ~ x, data = data_imp) 
+summary(fit_imp_yx)
+```
+
+```{r}
+data_imp %>% ggplot(aes(x = x, y = y)) + 
+  geom_point(aes(color = missing)) + 
+  geom_smooth(method = 'lm', se = FALSE, color = 'purple') + 
+  labs(title = "Stochastic Regression Imputation (y = 3226 - 12.65x)",
+       x = "Maternal Age", y = "Birth Weight (g)" ) + 
+  scale_color_discrete(name = "Missing") + 
+  theme_bw()
+```
+
+## 5.
+
+```{r}
+# 100 simulations
+n_sim <- 100
+
+# initialize list of results (int, slope, var, corr)
+results <- data.frame(
+  
+  # complete-case
+  intercept_cc = numeric(n_sim),
+  slope_cc = numeric(n_sim),
+  var_cc = numeric(n_sim),
+  cor_cc = numeric(n_sim),
+  
+  # imputed
+  intercept_imp = numeric(n_sim),
+  slope_imp = numeric(n_sim),
+  var_imp = numeric(n_sim),
+  cor_imp = numeric(n_sim)
+)
+```
+
+```{r}
+# run the simulations
+for (i in 1:n_sim) {
+  
+  # --- Complete-Case ---
+  
+  # generate missingness
+  p_miss <- plogis(0.5 * scale(y))
+  R <- rbinom(length(x), 1, p_miss)
+  
+  # substitute in missing values
+  x_obs <- x
+  x_obs[R == 1] <- NA
+  data_obs <- data.frame(x = x_obs, y = y)
+  
+  # complete-case regression
+  fit_cc <- lm(y ~ x, data = data_obs)
+  
+  # store results
+  results$intercept_cc[i] <- coef(fit_cc)[1]
+  results$slope_cc[i] <- coef(fit_cc)[2]
+  results$var_cc[i] <- summary(fit_cc)$sigma^2
+  results$cor_cc[i] <- cor(data_obs$x, data_obs$y, use = "complete.obs")
+  
+  
+  # --- Stochastic Regression Imputation ---
+  
+  # fit x on y
+  fit_imp_xy <- lm(x ~ y, data = data_obs)
+  
+  # predicted values + residual st. dev.
+  x_pred <- predict(fit_imp_xy, newdata = data_obs)
+  sigma <- summary(fit_imp_xy)$sigma
+  
+  # replace NAs with predicted + random noise
+  x_imp <- x_obs
+  missings <- is.na(x_imp)
+  x_imp[missings] <- x_pred[missings] + rnorm(sum(missings), 0, sigma)
+  
+  data_imp <- data.frame(x = x_imp, y = y)
+  
+  # fit y on x using data with imputed values
+  fit_imp_yx <- lm(y ~ x, data = data_imp)
+  
+  # store results
+  results$intercept_imp[i] <- coef(fit_imp_yx)[1]
+  results$slope_imp[i] <- coef(fit_imp_yx)[2]
+  results$var_imp[i] <- summary(fit_imp_yx)$sigma^2
+  results$cor_imp[i] <- cor(data_imp$x, data_imp$y)
+}
+```
+
+```{r}
+# summary statistics of complete dataset for comparison
+complete_model <- lm(y ~ x, data = data_complete)
+
+complete_intercept <- coef(complete_model)[1]
+complete_slope <- coef(complete_model)[2]
+complete_var <- summary(complete_model)$sigma^2
+complete_cor <- cor(x, y)
+```
+
+```{r}
+# slope histograms
+results %>% ggplot(aes(x = slope_cc)) +
+  geom_histogram(binwidth = 5, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_slope, color = 'red', linewidth = 1) + 
+  geom_vline(xintercept = mean(results$slope_cc), color = 'blue', linewidth = 1) + 
+  labs(title = "Complete-Case Analysis (avg = 1.04, obs = 12.43)", x = "Age Coefficient",
+       y = NULL) + 
+  theme_bw()
+
+results %>% ggplot(aes(x = slope_imp)) +
+  geom_histogram(binwidth = 5, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_slope, color = 'red', linewidth = 1) + 
+  geom_vline(xintercept = mean(results$slope_imp), color = 'blue', linewidth = 1) +
+  labs(title = "Stochastic Regression Imputation (avg = 0.23, obs = 12.43)", x = "Age Coefficient",
+       y = NULL) + 
+  theme_bw()
+```
+
+```{r}
+# intercept histograms
+results %>% ggplot(aes(x = intercept_cc)) +
+  geom_histogram(bins = 10, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_intercept, color = 'red', linewidth = 1) + 
+  geom_vline(xintercept = mean(results$intercept_cc), color = 'blue', 
+             linewidth = 1) +
+  labs(title = "Complete-Case Analysis (avg = 2749.9, obs = 2655.7)", x = "Intercept Coefficient",
+       y = NULL) + 
+  theme_bw()
+
+results %>% ggplot(aes(x = intercept_imp)) +
+  geom_histogram(bins = 10, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_intercept, color = 'red', linewidth = 1) + 
+  geom_vline(xintercept = mean(results$intercept_imp), color = 'blue', 
+             linewidth = 1) + 
+  labs(title = "Stochastic Regression Imputation (avg = 2937.7, obs = 2655.7)", x = "Intercept Coefficient",
+       y = NULL) + 
+  theme_bw()
+```
+
+```{r}
+# variance histograms
+results %>% ggplot(aes(x = var_cc)) +
+  geom_histogram(bins = 10, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_var, color = 'red', linewidth = 1) + 
+  geom_vline(xintercept = mean(results$var_cc), color = 'blue', linewidth = 1) + 
+  labs(title = "Complete-Case Analysis (avg = 512803.1, obs = 530236.2)", x = "Residual Variance",
+       y = NULL) + 
+  theme_bw()
+
+results %>% ggplot(aes(x = var_imp)) +
+  geom_histogram(bins = 10, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_var, color = 'red', linewidth = 1) + 
+  geom_vline(xintercept = mean(results$var_imp), color = 'blue', linewidth = 1) + 
+  labs(title = "Stochastic Regression Imputation (avg = 531066.9, obs = 530236.2)", x = "Residual Variance",
+       y = NULL) + 
+  theme_bw()
+```
+
+```{r}
+# correlation histograms
+results %>% ggplot(aes(x = cor_cc)) +
+  geom_histogram(bins = 10, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_cor, color = 'red', linewidth = 1) +
+  geom_vline(xintercept = mean(results$cor_cc), color = 'blue', linewidth = 1) +
+  labs(title = "Complete-Case Analysis (avg = 0.009, obs = 0.090)", x = "Correlation Coefficient",
+       y = NULL) + 
+  theme_bw()
+
+results %>% ggplot(aes(x = cor_imp)) +
+  geom_histogram(bins = 10, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_cor, color = 'red', linewidth = 1) + 
+  geom_vline(xintercept = mean(results$cor_imp), color = 'blue', linewidth = 1) +
+  labs(title = "Stochastic Regression Imputation (avg = 0.003, obs = 0.090)", x = "Correlation Coefficient",
+       y = NULL) + 
+  theme_bw()
+```
+
+
+# Task 2. Analysis of NHANES data regarding risk factors of cardiovascular disease
+
+## 1.
+
+
+```{r}
+## Assignment IDA 25/26 reading in NHANES data
+
+# set the working directory to the location where the data file is
+
+dat<-dget(file="NHANESvIDA.rda")
+str(dat) # concise info on size and variables
+dat$id <- NULL # delete observation id as not required
+head(dat) # first six observations
+summary(dat) # summary for all variables 
+
+```
+
+## 2.
+
+
+```{r}
+# Aggregation plot of missing data patterns
+
+# create aggregation object
+v <- aggr(dat, plot=FALSE)
+
+# plot missingness patterns (counts shown instead of proportions)
+plot(v, prop=FALSE, numbers=TRUE)
+
+```
+
+
+```{r}
+# missingness stratified by categorical variables
+
+# by gender (exclude other categorical vars to avoid redundancy)
+
+gg_miss_var(
+  dat %>% dplyr::select(-marital, -ethnic, -educ, -income, -num_mvpa_bouts, -cpm, -age),
+  facet = gender,
+  show_pct = TRUE
+) +
+  ggtitle("Gender") +
+  theme(plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+
+# by ethnicity
+gg_miss_var(
+  dat %>% dplyr::select(-gender, -marital, -educ, -income, -num_mvpa_bouts, -cpm, -age),
+  facet = ethnic,
+  show_pct = TRUE
+) +
+  ggtitle("Ethnicity") +
+  theme(plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+
+# by education level
+gg_miss_var(
+  dat %>% dplyr::select(-gender, -marital, -ethnic, -income, -num_mvpa_bouts, -cpm, -age),
+  facet = educ,
+  show_pct = TRUE
+) +
+  ggtitle("Education") +
+  theme(plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+
+# by marital status
+gg_miss_var(
+  dat %>% dplyr::select(-gender, -educ, -ethnic, -income, -num_mvpa_bouts, -cpm),
+  facet = marital,
+  show_pct = TRUE
+) +
+  ggtitle("Marital Status") +
+  theme(plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+
+# remove missing income values before faceting (since it's the stratifying variable)
+dat_no_income_na <- dat %>% filter(!is.na(income))
+
+# by income
+gg_miss_var(
+  dat_no_income_na %>% dplyr::select(-gender, -marital, -educ, -ethnic, -num_mvpa_bouts, -cpm, -age),
+  facet = income,
+  show_pct = TRUE
+) +
+  ggtitle("Income") +
+  theme(plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+
+```
+
+
+
+```{r}
+# margin plots: relationship between predictors and LDL-cholesterol (with missingness shown)
+
+# height vs cholesterol
+marginplot(dat[c(10, 7)],
+           main = "Height vs. Cholesterol",
+           xlab = "Height (cm)",
+           ylab = "LDL-Cholesterol (mg/dL)",
+           cex.main = 1.2, font.main = 2)
+
+# BMI vs cholesterol
+marginplot(dat[c(10, 8)],
+           main = "BMI vs. Cholesterol",
+           xlab = "Body mass index (kg/m^2)",
+           ylab = "LDL-Cholesterol (mg/dL)",
+           cex.main = 1.2, font.main = 2)
+
+# waist circumference vs cholesterol
+marginplot(dat[c(10, 9)],
+           main = "Waist vs. Cholesterol",
+           xlab = "Waist circumference (cm)",
+           ylab = "LDL-Cholesterol (mg/dL)",
+           cex.main = 1.2, font.main = 2)
+
+# apolipoprotein B vs cholesterol
+marginplot(dat[c(10, 11)],
+           main = "Apoliprotein B vs. Cholesterol",
+           xlab = "Apoliprotein (B) (mg/dL)",
+           ylab = "LDL-Cholesterol (mg/dL)",
+           cex.main = 1.2, font.main = 2)
+
+# mean activity counts vs cholesterol
+marginplot(dat[c(10, 12)],
+           main = "Mean counts vs. Cholesterol",
+           xlab = "Means counts per day",
+           ylab = "LDL-Cholesterol (mg/dL)",
+           cex.main = 1.2, font.main = 2)
+
+# MVPA bouts vs cholesterol
+marginplot(dat[c(10, 13)],
+           main = "Mean MVPA bouts vs. Cholesterol",
+           xlab = "Mean MVPA bouts per day",
+           ylab = "LDL-Cholesterol (mg/dL)",
+           cex.main = 1.2, font.main = 2)
+
+```
+
+
+## 3.
+
+```{r}
+# univariate summaries of cholesterol
+
+# numerical summary
+print(summary(dat$cholesterol))
+
+# remove missing values for plotting
+non_na_cholesterol <- dat[!is.na(dat$cholesterol), ]
+
+par(mfrow = c(1, 2))
+
+# box plot of cholesterol
+boxplot(non_na_cholesterol$cholesterol,
+        main = "Boxplot of Cholesterol",
+        ylab = "LDL-Cholesterol (mg/dL)",
+        col = "lightblue",
+        border = "steelblue")
+
+# density plot of cholesterol
+dens <- density(non_na_cholesterol$cholesterol)
+plot(dens,
+     main = "Density of Cholesterol",
+     xlab = "LDL-Cholesterol (mg/dL)",
+     col = "darkorange",
+     lwd = 2)
+polygon(dens, col = "moccasin", border = "darkorange")
+
+par(mfrow = c(1, 1))
+
+```
+
+
+```{r}
+# bivariate summaries of cholesterol
+
+# filter out missing income values for plotting
+non_na_cholesterol <- non_na_cholesterol %>%
+  filter(!is.na(income))
+
+# pivot categorical variables to long format for box plots
+dat_long <- non_na_cholesterol %>%
+  pivot_longer(
+    cols =  c(marital, ethnic, educ, income, gender),
+    names_to = "variable",
+    values_to = "category"
+  )
+
+# boxplots of cholesterol by categorical variable
+ggplot(dat_long, aes(x = category, y = cholesterol)) +
+  geom_boxplot(fill = "skyblue") +
+  facet_wrap(~ variable, scales = "free_x") +
+  theme_minimal() +
+  labs(
+    x = "",
+    y = "LDL-Cholesterol (mg/dL)"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+
+# pivot numeric predictors to long format for scatterplots
+dat_long_num <- non_na_cholesterol %>%
+  pivot_longer(
+    cols = c(age, height, bmi, waist, cpm, num_mvpa_bouts),
+    names_to = "variable",
+    values_to = "value"
+  )
+
+# scatterplots of cholesterol vs numeric predictors
+ggplot(dat_long_num, aes(x = value, y = cholesterol)) +
+  geom_point(alpha = 0.6) +
+  facet_wrap(~ variable, scales = "free_x") +
+  theme_minimal() +
+  labs(
+    x = "Predictor Value",
+    y = "LDL-Cholesterol (mg/dL)"
+  )
+
+# pearson correlation matrix for numeric variables
+num_data <- dat %>%
+  dplyr::select(cholesterol, age, height, bmi, waist, cpm, num_mvpa_bouts) %>%
+  na.omit()
+cor_mat <- cor(num_data, method = "pearson")
+
+# plot correlation matrix
+corrplot(cor_mat,
+         method = "color",
+         type = "upper",
+         addCoef.col = "black",
+         tl.col = "black",
+         tl.srt = 45,
+         number.cex = 0.7)
+```
+
+## 4.
+
+Let's set up our linear model
+
+```{r}
+# add indicator for mvpa 
+dat['ind_mvpa'] <- as.numeric(dat['num_mvpa_bouts'] != 0)
+
+# fit linear model with cholesterol as response variable
+m1 <- lm(cholesterol ~ gender + age + ethnic + educ + marital + income + height + waist
+    + cpm + ind_mvpa, data=dat)
+
+summary(m1)
+```
+
+We next investigate the validity of our model assumptions
+
+```{r}
+
+par(mfrow=c(2,2))
+plot(m1)
+ggsave("modelfit.png", width=8, height=5, dpi=300)
+
+```
+
+
+## 5.
+
+
+```{r}
+
+# let's first set up the complete case dataset and model fit
+
+# Complete Case Analysis
+dat_comp <- na.omit(dat)
+dat_comp$apoliprot <- NULL
+
+# complete case analysis model fit
+fit_cc <- lm(cholesterol ~ gender + age + ethnic + educ + marital + income + 
+               height + waist + cpm + ind_mvpa, data=dat_comp)
+
+# summary statistics
+summary(fit_cc)
+
+```
+
+
+Initialise dataset for modelling
+
+```{r}
+# install.packages("mice")
+md.pattern(dat)
+
+# Subset to only data where cholesterol is observed
+dat_nona <- dat[!is.na(dat$cholesterol), ]
+
+# Re-create ind_mvpa on this subset for imputation setup
+dat_nona$ind_mvpa <- as.numeric(dat_nona$num_mvpa_bouts != 0)
+
+# Drop num_mvpa_bouts as already encoded it with ind_mvpa, 
+dat_nona$num_mvpa_bouts <- NULL
+dat_nona$apoliprot <- NULL # also drop apoliprot
+
+# extract names of variables with missing data
+missing_var <- names(dat_nona)[apply(is.na(dat_nona), 2, any)]
+
+# find rows with missing values in dat_nona
+missing_idx <- rowSums(is.na(dat_nona))
+cat("Total rows with at least one missing value:", sum(missing_idx > 0), "\n")
+
+# View those rows
+dat_nona[missing_idx > 0, ]
+
+# Also useful: which specific variables are missing for each row
+colSums(is.na(dat_nona))
+
+```
+
+
+Do an initial dry run using mice() function
+
+```{r}
+# dry run to obtain the default methods and predictor matrix
+setup <- mice(dat_nona, maxit=0, seed=1)
+
+pred <- setup$predictorMatrix
+meth <- setup$method
+# do not impute response (cautionary measure)
+meth["cholesterol"] <- ""
+# display methods
+meth
+
+# deal with potential multicollinearity between bmi and waist
+# by removing bmi as a imputing predictor of waist and vice versaa
+pred['bmi', 'waist'] <- 0
+pred['waist', 'bmi'] <- 0
+#cor(dat_nona$waist, dat_nona$bmi)
+
+# restrict bmi values
+post <- setup$post
+post["bmi"] <- "imp[[j]][,i] <- squeeze(imp[[j]][,i], c(10, 60))"
+
+
+# dry run (30 imputations, 20 iterations)
+dat_mice <- mice(dat_nona, method = meth, predictorMatrix = pred, post=post,#visitSequence = visSeq,
+                  maxit = 20, m = 30, seed = 1, printFlag = FALSE)
+
+# Check for any logged problems during imputation
+dat_mice$loggedEvents
+
+```
+
+
+```{r fig.height=4, fig.width=10, outheight="95%"}
+
+# plot 
+#par(mfrow=c(4,1))
+plot(dat_mice, c("income", "height", "bmi", "waist"), layout=c(2,4))
+
+# density plot
+densityplot(dat_mice, 
+            lwd = 2,
+            col = c("steelblue", "indianred"),  # blue = observed, red = imputed
+            scales = list(y = list(relation = "free"),
+                         x = list(relation = "free")),
+            xlab = "Value",
+            #strip = strip.custom(
+            #  bg = "grey90",
+            #  par.strip.text = list(cex = 0.9, font = 2)
+            #),
+            par.settings = list(
+              plot.line = list(lwd = 2),
+              superpose.line = list(
+                col = c("steelblue", "indianred"),
+                lwd = 2
+              ),
+              background = list(col = "white"),
+              strip.background = list(col = "grey90")
+            ))
+
+# visualise imputed values (grey: observed, red: imputed) for each variable
+stripplot(dat_mice, height + waist + bmi ~ .imp,
+          scales = list(x = list(at = c(0, 5, 10, 15, 20, 25, 30),
+                                  labels = c("0","5","10","15","20","25","30")),
+                        y = list(relation = "free")),
+          col = c("grey", mdc(2)),
+          pch=20, cex=1.2,
+          xlab = "Imputation number (0 = observed)")
+
+# visualise imputations made for BMI at each iteration
+stripplot(dat_mice, bmi ~ .imp, pch = 20, cex = 1.2,
+          xlab = "Imputation number (0 = observed)",
+          main = "Observed and imputed values of BMI")
+
+```
+
+
+Fitting model
+
+```{r}
+
+# fit the model using mice-imputed data
+fit <- with(dat_mice, lm(cholesterol ~ gender + age + ethnic + educ + marital + 
+                            income + height + waist + cpm + ind_mvpa))
+
+# pool data and find summary statistics
+pool_fit <- pool(fit)
+summary(pool_fit, conf.int=TRUE)
+
+# explained variance of our pooled fitted data
+pool.r.squared(pool_fit, adjusted=TRUE)
+
+```
+
+
+
+
+
+
+
+
+
+
