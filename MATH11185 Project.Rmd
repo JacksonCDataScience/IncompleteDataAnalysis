@@ -1,0 +1,169 @@
+---
+title: "MATH11185 Project"
+output: html_document
+date: "2026-03-19"
+---
+
+**(1)**
+```{r}
+library(MASS)
+data(birthwt)
+```
+
+```{r}
+any(is.na(birthwt$age))
+any(is.na(birthwt$bwt))
+```
+
+
+```{r}
+x <- birthwt$age
+y <- birthwt$bwt
+
+data_complete <- data.frame(x = x, y = y)
+```
+
+```{r}
+y_scaled <- scale(y)
+
+p_miss <- plogis(0.5 * y_scaled)
+
+R <- rbinom(length(x), 1, p_miss)
+```
+
+```{r}
+x_obs <- x
+x_obs[R == 1] <- NA
+
+data_obs <- data.frame(x = x_obs, y = y)
+```
+
+```{r}
+mean(is.na(data_obs$x))
+```
+**(2)**
+```{r}
+fit_full_xy <- lm(x ~ y, data = data_complete)
+fit_missing_xy <- lm(x ~ y, data = data_obs)
+
+summary(fit_full_xy)
+summary(fit_missing_xy)
+```
+
+```{r}
+par(mfrow = c(2,2))
+plot(fit_missing_xy)
+plot(fit_full_xy)
+par(mfrow = c(1,1))
+```
+
+**(3)**
+```{r}
+fit_full_yx <- lm(y ~ x, data = data_complete)
+fit_missing_yx <- lm(y ~ x, data = data_obs)
+
+summary(fit_full_yx)
+summary(fit_missing_yx)
+```
+
+```{r}
+par(mfrow = c(2,2))
+plot(fit_missing_yx)
+plot(fit_full_yx)
+par(mfrow = c(1,1))
+```
+
+**(4)**
+```{r}
+fit_imp_xy <- lm(x ~ y, data = data_obs)
+```
+
+```{r}
+x_pred <- predict(fit_imp_xy, newdata = data_obs)
+
+sigma <- summary(fit_imp_xy)$sigma
+
+x_imp <- data_obs$x
+missings <- is.na(x_imp)
+
+x_imp[missings] <- x_pred[missings] + rnorm(sum(missings), 0, sigma)
+
+data_imp <- data.frame(x = x_imp, y = y)
+```
+
+```{r}
+fit_imp_yx <- lm(y ~ x, data = data_imp) 
+summary(fit_imp_yx)
+```
+
+**(5)**
+```{r}
+n_sim <- 100
+
+results <- data.frame(
+  intercept_cc = numeric(n_sim),
+  slope_cc = numeric(n_sim),
+  var_cc = numeric(n_sim),
+  cor_cc = numeric(n_sim),
+  
+  intercept_imp = numeric(n_sim),
+  slope_imp = numeric(n_sim),
+  var_imp = numeric(n_sim),
+  cor_imp = numeric(n_sim)
+)
+```
+
+```{r}
+for (i in 1:n_sim) {
+  p_miss <- plogis(0.5 * scale(y))
+  R <- rbinom(length(x), 1, p_miss)
+  
+  x_obs <- x
+  x_obs[R == 1] <- NA
+  data_obs <- data.frame(x = x_obs, y = y)
+  
+  fit_cc <- lm(y ~ x, data = data_obs)
+  
+  results$intercept_cc[i] <- coef(fit_cc)[1]
+  results$slope_cc[i] <- coef(fit_cc)[2]
+  results$var_cc[i] <- summary(fit_cc)$sigma^2
+  results$cor_cc[i] <- cor(data_obs$x, data_obs$y, use = "complete.obs")
+  
+  fit_imp_xy <- lm(x ~ y, data = data_obs)
+  
+  x_pred <- predict(fit_imp_xy, newdata = data_obs)
+  sigma <- summary(fit_imp_xy)$sigma
+  
+  x_imp <- x_obs
+  missings <- is.na(x_imp)
+  x_imp[missings] <- x_pred[missings] + rnorm(sum(missings), 0, sigma)
+  
+  data_imp <- data.frame(x = x_imp, y = y)
+  
+  fit_imp_yx <- lm(y ~ x, data = data_imp)
+  
+  results$intercept_imp[i] <- coef(fit_imp_yx)[1]
+  results$slope_imp[i] <- coef(fit_imp_yx)[2]
+  results$var_imp[i] <- summary(fit_imp_yx)$sigma^2
+  results$cor_imp[i] <- cor(data_imp$x, data_imp$y)
+}
+```
+
+```{r}
+complete_model <- lm(y ~ x, data = data_complete)
+
+complete_intercept <- coef(complete_model)[1]
+complete_slope <- coef(complete_model)[2]
+complete_var <- summary(complete_model)$sigma^2
+complete_cor <- cor(x, y)
+```
+
+```{r}
+hist(results$slope_cc, main="Slope (Complete Case)")
+abline(v = complete_slope, col="red", lwd=2)
+
+hist(results$slope_imp, main="Slope (Imputed)")
+abline(v = complete_slope, col="blue", lwd=2)
+```
+
+
