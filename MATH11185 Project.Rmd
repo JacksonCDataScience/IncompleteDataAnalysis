@@ -309,7 +309,7 @@ results %>% ggplot(aes(x = cor_imp)) +
   geom_histogram(bins = 10, fill = 'lightblue') + 
   geom_vline(xintercept = complete_cor, color = 'red', linewidth = 1) + 
   geom_vline(xintercept = mean(results$cor_imp), color = 'blue', linewidth = 1) +
-  labs(title = "Stochastic Regression Imputation (avg = 0.003, pbs = 0.090)", x = "Correlation Coefficient",
+  labs(title = "Stochastic Regression Imputation (avg = 0.003, obs = 0.090)", x = "Correlation Coefficient",
        y = NULL) + 
   theme_bw()
 ```
