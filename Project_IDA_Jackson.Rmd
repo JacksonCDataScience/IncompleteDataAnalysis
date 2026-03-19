@@ -1,7 +1,7 @@
 ---
 title: |
-  <center> Incomplete Data Analysis </center>
-author: "Jackson Cramer"
+  <center> Incomplete Data Analysis Assignment Code Markdown </center>
+author: "Jackson Cramer, Maximillian McCourt, Brandon Causing"
 subtitle: School of Mathematics, University of Edinburgh
 output:
   html_document:
@@ -9,7 +9,51 @@ output:
   pdf_document: default
 ---
 
-## 1. Read in the data using the R script provided on learn.
+
+Group Member Contributions:<br>
+- Brandon Causing - s2901457: Coding and write up of Task 1. (roughtly 1/3 of total work)<br>
+- Maximillian McCourt - s2145762: Coding and report write up of Task 2, questions 1-3, as well as editing of the remaining writeup of Task 2. (roughly 1/3 of total work)<br>
+- Jackson Cramer - s2274544: Coding and report write up of Task 2, questions 4-5, as well as editing of the remaining writeup of Task 2. (roughly 1/3 of total work)<br>
+
+
+
+```{r}
+library(VIM)
+library(naniar)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(corrplot)
+
+```
+
+
+# Task 1. Comparison of complete case analysis, stochastic regression imputation and predictive mean matching
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Task 2. Analysis of NHANES data regarding risk factors of cardiovascular disease
+
+## 1.
 
 
 ```{r}
@@ -25,51 +69,39 @@ summary(dat) # summary for all variables
 
 ```
 
-## 2. Use summary statistics and graphs to explore the missing values in the data. Describe and interpret these summaries. State what assumptions you are making regarding missing data mechanisms.
+## 2.
 
 
 ```{r}
 # aggregation plot
-library(VIM)
 
 v <- aggr(dat, plot=FALSE)
 plot(v, prop=FALSE, numbers=TRUE)
 
 ```
 
--Number of missings plot:
-Cholesterol has the most missing values. Other variables with missingness include apoliprot, bmi, height, waist, and income. This is therefore a multivariate missingness situation.
--Combinations plot:
-(a) There are 893 observations with complete data for all variables. 
-(b) The most prevalent combination of missingness, by far, is between apoliprot and cholesterol, where there are 46 observations in which both of these variables are missing. In fact, whenever cholesterol is missing, apoliprot is missing, and more than half of cholesterol's missing values are within instances in which apoliprot is also missing.
-(c) For every instance in which height is missing, so is bmi. Similarly, for 2/3 missing values of bmi, height and waist is also missing
-
-
-```{r}
-# missingness map
-library(Amelia)
-missmap(dat, col=c("firebrick1", "dodgerblue"))
-
-```
-
-Missingness looks evenly distributed across all ordered observations, with no apparent patterns in missingness.
-
 
 ```{r}
 # missing stratified by categorical variable
-library(naniar)
 
-gg_miss_var(dat, facet=gender, show_pct=TRUE)
-gg_miss_var(dat, facet=ethnic, show_pct = TRUE)
-gg_miss_var(dat, facet=educ, show_pct=TRUE)
-gg_miss_var(dat, facet=marital, show_pct=TRUE)
-gg_miss_var(dat, facet=income, show_pct=TRUE)
+
+gg_miss_var(dat %>% select(-c(marital, ethnic, educ, income, num_mvpa_bouts, cpm, age)), facet=gender, show_pct=TRUE) + ggtitle("Gender") + theme(
+    plot.title = element_text(size = 16, face = "bold",  hjust = 0.5))
+gg_miss_var(dat %>% select(-c(gender, marital, educ, income, num_mvpa_bouts, cpm, age)), facet=ethnic, show_pct = TRUE)  + ggtitle("Ethnicity") + theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+gg_miss_var(dat  %>% select(-c(gender, marital, ethnic, income, num_mvpa_bouts, cpm, age)), facet=educ, show_pct=TRUE)  + ggtitle("Education") + theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+gg_miss_var(dat  %>% select(-c(gender, educ, ethnic, income, num_mvpa_bouts, cpm)), facet=marital, show_pct=TRUE)  + ggtitle("Marital Status") + theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+dat_no_income_na <- dat %>% filter(!is.na(income))
+gg_miss_var(dat_no_income_na  %>% select(-c(gender, marital, educ, ethnic, num_mvpa_bouts, cpm, age)), facet = income, show_pct = TRUE)  + ggtitle("Income") + theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5))
+
 
 ```
 
 ```{r}
-# get numerical summary of gg_miss_var plots 
-library(dplyr)
+# get numerical summary of missingness percentages by categorical variable
 
 cat_vars <- c("gender", "ethnic", "educ", "marital", "income")
 vars_to_check <- setdiff(colnames(dat), cat_vars)
@@ -91,62 +123,50 @@ missing_by_value
 
 ```
 
--Gender: Cholesterol is missing noticeably more often for men than women. The proportions of missing are lower for females for each of the other numeric columns that have missingness.
--Ethnic: With regard to cholesterol and apoliprot, Non-HispBlack has the lowest proportions of missingness. Especially for cholesterol, the proportions for the other ethnicities (not Non-HispBlack) are very similar to eachother.
--Education: For cholesterol and apoliprot (especially cholesterol), the proportion of missingness is lower for 9-11th grade than for the other education levels, while High School has the highest proportion.
--Marital: For cholesterol and apoliprot (especially apoliprot), sep has the highest proportion of missingness. For wid and sep, the proportion of missingess for cholesterol and apoliprot is the exact same.
--Income: high >20: has more missing values than low <20K for all numeric variables with missingness.
-
 
 ```{r}
-# margin plot (treating apoliprotein and cholesterol as responses)
-library(VIM)
+# margin plots (predictors against cholesterol)
 
+marginplot(dat[c(10, 7)],
+           main = "Height vs. Cholesterol",
+           xlab = "Height (cm)",
+           ylab = "LDL-Cholesterol (mg/dL)",
+           cex.main = 1.2, font.main = 2)
 
-for(num in 7:13){
-  if(num != 10){
-  marginplot(dat[c(10,num)])
-  }}
+marginplot(dat[c(10, 8)],
+           main = "BMI vs. Cholesterol",
+           xlab = "Body mass index (kg/m^2)",
+           ylab = "LDL-Cholesterol (mg/dL)",
+           cex.main = 1.2, font.main = 2)
 
+marginplot(dat[c(10, 9)],
+           main = "Waist vs. Cholesterol",
+           xlab = "Waist circumference (cm)",
+           ylab = "LDL-Cholesterol (mg/dL)",
+           cex.main = 1.2, font.main = 2)
 
-for(num in 7:13){
-  if(num != 11){
-  marginplot(dat[c(11,num)])
-  }}
+marginplot(dat[c(10, 11)],
+           main = "Apoliprotein B vs. Cholesterol",
+           xlab = "Apoliprotein (B) (mg/dL)",
+           ylab = "LDL-Cholesterol (mg/dL)",
+           cex.main = 1.2, font.main = 2)
 
+marginplot(dat[c(10, 12)],
+           main = "Mean counts vs. Cholesterol",
+           xlab = "Means counts per day",
+           ylab = "LDL-Cholesterol (mg/dL)",
+           cex.main = 1.2, font.main = 2)
 
+marginplot(dat[c(10, 13)],
+           main = "Mean MVPA bouts vs. Cholesterol",
+           xlab = "Mean MVPA bouts per day",
+           ylab = "LDL-Cholesterol (mg/dL)",
+           cex.main = 1.2, font.main = 2)
 
 ```
 
--Very few missing values for height and BMI (2–3), so no meaningful conclusions can be drawn from those comparisons in which these are missing
--height, BMI, cpm, nvm_mvpa_bouts show no noticeable differences when cholesterol or apolipoprotein are missing
--Cholesterol and apolipoprotein show a clear relationship: when cholesterol is missing, apolipoprotein tends to be higher, and when both are observed they appear positively and linearly related. Additionally, when cholesterol is missing, apoliprotein appears to be higher.
--Waist shows small differences: missing waist corresponds to slightly lower cholesterol and apolipoprotein, while when cholesterol or apolipoprotein are missing, waist is only slightly higher or lower.
 
-
-
-
-Key Findings & Assumptions:
-
-1. Missingness is multivariate.
-Several variables contain missing values, with cholesterol having the largest number of missing observations. Other variables with missingness include apolipoprotein, BMI, height, waist, and income.
-
-2. No ordering or temporal pattern in missingness.
-The missingness map shows that missing values are distributed evenly across the ordered observations.
-Assumption: missingness does not appear to depend on the ordering of observations
-
-3. Missingness varies across observed categorical variables
-The proportion of missing values of cholesterol and apoliprotein differs across categories of gender, ethnicity, education, marital status, and income (although income has relatively few missing values). This variation indicates that missingness depends on observed variables rather than occurring completely at random.
-Assumption: The probability that a value is missing may depend on observed variables but not directly on the unobserved value itself, which rules our Missing Completely at Random (MCAR).
-
-4. Cholesterol and apolipoprotein missingness appear strongly linked.
-Cholesterol is always missing when apolipoprotein is missing Additionally, observed apolipoprotein values tend to be higher when cholesterol is missing, and when both variables are observed, they are positively correlated. This variation indicates that missingness of apoliprotein depends unobserved values of cholesterol. However, for cholesterol, the probability that cholesterol is missing appears to be partially explained by observed variables (e.g., gender, ethnicity, education, marital status, and income) rather than depending directly on the unobserved values of another variable as apoliprotein does.
-Assumptions:
-(a) Missingness in cholesterol is assumed to be Missing at Random (MAR), depending on observed variables such as gender, ethnicity, education, marital status, and income.
-(b) Missingness in apolipoprotein is assumed to be Missing Not at Random (MNAR), because it is always missing when cholesterol is missing and therefore depends on an unobserved variable (cholesterol).
-
-
-## 3. Produce summary statistics and graphical summaries relevant for the analysis. Describe and interpret these summaries.
+## 3.
 
 ```{r}
 # univariate summaries of cholesterol
@@ -154,35 +174,37 @@ Assumptions:
 # numerical summary
 print(summary(dat$cholesterol))
 
-# box plot (analyze outliers and spread of data)
 non_na_cholesterol <- dat[!is.na(dat$cholesterol), ]
-boxplot(non_na_cholesterol$cholesterol)
 
-# density plot (analyze distribution)
+par(mfrow = c(1, 2))
+
+# box plot 
+boxplot(non_na_cholesterol$cholesterol,
+        main = "Boxplot of Cholesterol",
+        ylab = "LDL-Cholesterol (mg/dL)",
+        col = "lightblue",
+        border = "steelblue")
+
+# density plot
 dens <- density(non_na_cholesterol$cholesterol)
-plot(dens)
+plot(dens,
+     main = "Density of Cholesterol",
+     xlab = "LDL-Cholesterol (mg/dL)",
+     col = "darkorange",
+     lwd = 2)
+polygon(dens, col = "moccasin", border = "darkorange")
+
+par(mfrow = c(1, 1))
 
 ```
-
-
--Numerical summary:
-(a) The mean (117.6) and median (117) are very close, indicating that the distribution of cholesterol is approximately symmetric, with no strong skewness.
-(b) The interquartile range (92 to 139) indicates that the middle 50% of individuals have cholesterol values within a moderately wide range, reflecting some variability in the population.
-(c) The data span a wide range, with the minimum (28) well below the 1st quartile and the maximum (242) well above the 3rd quartile, indicating substantial variability in cholesterol levels.
--Box plot:
-(a) The plot is relatively symmetric, meaning the data are roughly balanced around the median, with similar spread above and below it, indicating little or no skew.
-(b) Outliers are only located above the box plot for high cholesterol values, not below, indicating that the extreme values in the data occur on the high end and the distribution is right-skewed.
--Density plot:
-The distribution appears unimodal and roughly symmetric around a cholesterol of 125, however, there is a bit of a right skew.
 
 
 ```{r}
 # bivariate summaries
 
 # box plots of cholesterol by each categorical variable
-
-library(ggplot2)
-library(tidyr)
+non_na_cholesterol <- non_na_cholesterol %>%
+  filter(!is.na(income))
 
 dat_long <- non_na_cholesterol %>%
   pivot_longer(
@@ -196,7 +218,6 @@ ggplot(dat_long, aes(x = category, y = cholesterol)) +
   facet_wrap(~ variable, scales = "free_x") +
   theme_minimal() +
   labs(
-    title = "Cholesterol by Categorical Variables",
     x = "",
     y = "LDL-Cholesterol (mg/dL)"
   ) +
@@ -206,12 +227,9 @@ ggplot(dat_long, aes(x = category, y = cholesterol)) +
 
 
 # scatter plots of cholesterol by each numeric variable
-
-library(dplyr)
-
 dat_long_num <- non_na_cholesterol %>%
   pivot_longer(
-    cols = c(age, height, bmi, waist, cpm, num_mvpa_bouts, apoliprot),
+    cols = c(age, height, bmi, waist, cpm, num_mvpa_bouts),
     names_to = "variable",
     values_to = "value"
   )
@@ -221,60 +239,41 @@ ggplot(dat_long_num, aes(x = value, y = cholesterol)) +
   facet_wrap(~ variable, scales = "free_x") +
   theme_minimal() +
   labs(
-    title = "Cholesterol vs Numeric Variables",
     x = "Predictor Value",
     y = "LDL-Cholesterol (mg/dL)"
   )
 
-# pearson correlation between apoliprot and cholesterol
-non_na_cholesterol_apoli <- dat[!is.na(dat$cholesterol) & !is.na(dat$apoliprot), ]
-cor(non_na_cholesterol_apoli$cholesterol, non_na_cholesterol_apoli$apoliprot, method="pearson")
+# pearson correlation matrix plot
+num_data <- dat %>%
+  select(cholesterol, age, height, bmi, waist, cpm, num_mvpa_bouts) %>%
+  na.omit()
+cor_mat <- cor(num_data, method = "pearson")
+corrplot(cor_mat,
+         method = "color",
+         type = "upper",
+         addCoef.col = "black",
+         tl.col = "black",
+         tl.srt = 45,
+         number.cex = 0.7)
 
 
 ```
 
--Box plots:
-There are no obvious, significant variations between cholesterol values and the value of any of our categorical variables.
--Scatter plots:
-There is a positive, linear trend in cholesterol with apoliprot. This is further made evidence with a high Pearson correlation coefficient of 0.88. However, there are no obvious linear trends with respect to any of the other numeric variables.
+
+## 4.
 
 
-4. Linear modelling: Choose either LDL-cholesterol or Apoliprotein as response variable. The
-predictor variable should contain:
-• demographic variables (gender, age, ethnicity, educational level);
-• body measurement(s);
-• physical activity monitor variables. You might find it useful to turn mean number of
-MVPA bouts per day into an indicator variable (bouts yes/no).
-1Note that the physical activity variables were derived from accelerometer measurements. Participants were
-asked to wear accelerometers for 7 days. The different variables given above were generated from the raw minute-
-to-minute accelerometer data called counts. These counts are a measure of the acceleration, i.e. the intensity of
-the movement. Non-wear time was defined as any interval 60 minutes or longer in which all count values were 0.
-Days of monitoring with 600-1200 minutes of weartime were considered valid for analysis, and daily averages for
-participants with a minimum of 3 valid days are considered. Time spent in various activity intensities was assessed
-using standard cut-points for sedentary, light, lifestyle, moderate and vigorous. Sedentary time accumulated in
-bouts of at least 30 minutes was defined as any interval of weartime 30 minutes or longer in which all count values
-were in the sedentary range. Bouted moderate-to-vigorous physical activity (bouted MVPA) were defined as any
-interval 10 minutes or longer in which all count values were in the MVPA range, respectively.
-3
-Fit a linear model with your chosen response variable to infer whether measures of obesity
-and physical activity are associated with cardio vascular disease indicators whilst includ-
-ing the other demographic variables mentioned above. This is called adjusting for poten-
-tial confounder variables. Check the model assumptions, display and interpret the model
-results (coefficients etc).
-5. Dealing with missing values. Regarding the response variable of your choice use cases
-where the response is not missing, that is do not impute the response! Regarding the predic-
-tor variables choose a single imputation method (one of the methods we covered includ-
-ing predictive mean matching) or multiple imputation. Justify your choice based on the
-missing value mechanism you are assuming (MCAR, MAR or MNAR) and the merits of the
-method. Also carry out an analysis which is entirely based on complete cases. Comment
-on the difference in results between complete case analysis and the analysis based on some
-form of imputation. How do the results differ and are there big differences? What are the
-advantages and/or disadvantages of the analysis based on imputation over the complete
-case analysis? Justify your answer.
-6. Write a report which contains the above steps with your comments.
-The commentary and text in your report should be technical and aimed at statisticians,
-explaining each step and what the conclusions were. Your fitted model should be presented
-mathematically (i.e. model equation).
+
+
+## 5.
+
+
+
+
+
+
+
+
 
 
 
