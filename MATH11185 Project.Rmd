@@ -237,20 +237,79 @@ complete_cor <- cor(x, y)
 ```
 
 ```{r}
-# histograms
+# slope histograms
 results %>% ggplot(aes(x = slope_cc)) +
   geom_histogram(binwidth = 5, fill = 'lightblue') + 
   geom_vline(xintercept = complete_slope, color = 'red', linewidth = 1) + 
-  labs(title = "Complete-Case Analysis", x = "Age Coefficient",
+  geom_vline(xintercept = mean(results$slope_cc), color = 'blue', linewidth = 1) + 
+  labs(title = "Complete-Case Analysis (avg = 1.04, obs = 12.43)", x = "Age Coefficient",
        y = NULL) + 
   theme_bw()
 
 results %>% ggplot(aes(x = slope_imp)) +
   geom_histogram(binwidth = 5, fill = 'lightblue') + 
   geom_vline(xintercept = complete_slope, color = 'red', linewidth = 1) + 
-  labs(title = "Stochastic Regression Imputation", x = "Age Coefficient",
+  geom_vline(xintercept = mean(results$slope_imp), color = 'blue', linewidth = 1) +
+  labs(title = "Stochastic Regression Imputation (avg = 0.23, obs = 12.43)", x = "Age Coefficient",
        y = NULL) + 
   theme_bw()
 ```
 
+```{r}
+# intercept histograms
+results %>% ggplot(aes(x = intercept_cc)) +
+  geom_histogram(bins = 10, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_intercept, color = 'red', linewidth = 1) + 
+  geom_vline(xintercept = mean(results$intercept_cc), color = 'blue', 
+             linewidth = 1) +
+  labs(title = "Complete-Case Analysis (avg = 2749.9, obs = 2655.7)", x = "Intercept Coefficient",
+       y = NULL) + 
+  theme_bw()
 
+results %>% ggplot(aes(x = intercept_imp)) +
+  geom_histogram(bins = 10, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_intercept, color = 'red', linewidth = 1) + 
+  geom_vline(xintercept = mean(results$intercept_imp), color = 'blue', 
+             linewidth = 1) + 
+  labs(title = "Stochastic Regression Imputation (avg = 2937.7, obs = 2655.7)", x = "Intercept Coefficient",
+       y = NULL) + 
+  theme_bw()
+```
+
+```{r}
+# variance histograms
+results %>% ggplot(aes(x = var_cc)) +
+  geom_histogram(bins = 10, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_var, color = 'red', linewidth = 1) + 
+  geom_vline(xintercept = mean(results$var_cc), color = 'blue', linewidth = 1) + 
+  labs(title = "Complete-Case Analysis (avg = 512803.1, obs = 530236.2)", x = "Residual Variance",
+       y = NULL) + 
+  theme_bw()
+
+results %>% ggplot(aes(x = var_imp)) +
+  geom_histogram(bins = 10, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_var, color = 'red', linewidth = 1) + 
+  geom_vline(xintercept = mean(results$var_imp), color = 'blue', linewidth = 1) + 
+  labs(title = "Stochastic Regression Imputation (avg = 531066.9, obs = 530236.2)", x = "Residual Variance",
+       y = NULL) + 
+  theme_bw()
+```
+
+```{r}
+# correlation histograms
+results %>% ggplot(aes(x = cor_cc)) +
+  geom_histogram(bins = 10, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_cor, color = 'red', linewidth = 1) +
+  geom_vline(xintercept = mean(results$cor_cc), color = 'blue', linewidth = 1) +
+  labs(title = "Complete-Case Analysis (avg = 0.009, obs = 0.090)", x = "Correlation Coefficient",
+       y = NULL) + 
+  theme_bw()
+
+results %>% ggplot(aes(x = cor_imp)) +
+  geom_histogram(bins = 10, fill = 'lightblue') + 
+  geom_vline(xintercept = complete_cor, color = 'red', linewidth = 1) + 
+  geom_vline(xintercept = mean(results$cor_imp), color = 'blue', linewidth = 1) +
+  labs(title = "Stochastic Regression Imputation (avg = 0.003, pbs = 0.090)", x = "Correlation Coefficient",
+       y = NULL) + 
+  theme_bw()
+```
