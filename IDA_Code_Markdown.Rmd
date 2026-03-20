@@ -11,7 +11,7 @@ output:
 
 
 Group Member Contributions:<br>
-- Brandon Causing - s2901457: Coding and write up of Task 1. (roughtly 1/3 of total work)<br>
+- Brandon Causing - s2901457: Coding and write up of Task 1. (roughly 1/3 of total work)<br>
 - Maximillian McCourt - s2145762: Coding and report write up of Task 2, questions 1-3, as well as editing of the remaining writeup of Task 2. (roughly 1/3 of total work)<br>
 - Jackson Cramer - s2274544: Coding and report write up of Task 2, questions 4-5, as well as editing of the remaining writeup of Task 2. (roughly 1/3 of total work)<br>
 
